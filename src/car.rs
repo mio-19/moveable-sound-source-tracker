@@ -76,16 +76,46 @@ use st7789;
 
 use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
+use esp_idf_hal::ledc::*;
+use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_hal::prelude::*;
+use std::{borrow::Borrow, time::Duration};
+use esp_idf_hal::ledc;
+
+
+
+// reference https://github.com/esp-rs/esp-idf-hal/blob/447fcc3616e3a3643ca109d4bc7acf40754da9af/examples/ledc-threads.rs
+
+struct EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1> where
+    C0: HwChannel,
+    H0: HwTimer,
+    T0: Borrow<ledc::Timer<H0>>,
+    P0: gpio::OutputPin,
+    C1: HwChannel,
+    H1: HwTimer,
+    T1: Borrow<ledc::Timer<H1>>,
+    P1: gpio::OutputPin,
+{
+    positive: Channel<C0, H0, T0, P0>,
+    negative: Channel<C1, H1, T1, P1>,
+}
+
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
 
     let peripherals = Peripherals::take().unwrap();
-    let pins = peripherals.pins;
 
     let mut wifi = common::init_wifi()?;
 
-    loop {
-    }
+
+    let config = config::TimerConfig::default().frequency(25.kHz().into());
+    let timer = Arc::new(ledc::Timer::new(peripherals.ledc.timer0, &config)?);
+    let channel0 = Channel::new(peripherals.ledc.channel0, timer.clone(), peripherals.pins.gpio4)?;
+    let channel1 = Channel::new(peripherals.ledc.channel1, timer.clone(), peripherals.pins.gpio5)?;
+    let channel2 = Channel::new(peripherals.ledc.channel2, timer.clone(), peripherals.pins.gpio6)?;
+    let channel3 = Channel::new(peripherals.ledc.channel3, timer.clone(), peripherals.pins.gpio7)?;
+
+    loop {}
 
     Ok(())
 }
