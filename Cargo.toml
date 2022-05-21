@@ -85,3 +85,15 @@ anyhow = "1"
 
 # Future; might be possible once https://github.com/rust-lang/cargo/issues/9096 hits Cargo nightly:
 #rust-esp32-ulp-blink = { git = "https://github.com/ivmarkov/rust-esp32-ulp-blink", artifact = "bin" }
+
+[[bin]]
+name = "tracker"
+path = "src/tracker.rs"
+
+[[bin]]
+name = "test"
+path = "src/test.rs"
+
+[[bin]]
+name = "car"
+path = "src/car.rs"

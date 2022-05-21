@@ -8,9 +8,6 @@ const SSID: &str = env!("RUST_ESP32_STD_DEMO_WIFI_SSID");
 #[cfg(not(feature = "qemu"))]
 const PASS: &str = env!("RUST_ESP32_STD_DEMO_WIFI_PASS");
 
-#[allow(dead_code)]
-mod test;
-
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -165,62 +162,19 @@ fn wifi(
 }
 
 
-pub struct ControlData {
-    pub offset: i32,
-}
 
-pub struct StateData {}
-
-
-pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin> {
-    // 3 input pins
-    pub recv_a: GpioA,
-    pub recv_b: GpioB,
-    pub recv_c: GpioC,
-}
-
-
-fn read<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin>(workspace: &Workspace<GpioA, GpioB, GpioC>) -> Result<StateData> {
-    panic!("TODO")
-}
-
-fn calculate(data: StateData) -> Result<ControlData> {
-    panic!("TODO")
-}
-
-fn send(wifi: &mut EspWifi, data: ControlData) -> Result<()> {
-    panic!("TODO")
-}
-
-fn main() -> Result<()> {
-    esp_idf_sys::link_patches();
-
-
-    let peripherals = Peripherals::take().unwrap();
-    let pins = peripherals.pins;
-
+pub fn init_wifi() -> Result<Box<EspWifi>> {
     let netif_stack = Arc::new(EspNetifStack::new()?);
     let sys_loop_stack = Arc::new(EspSysLoopStack::new()?);
     let default_nvs = Arc::new(EspDefaultNvs::new()?);
 
-
-
-    let mut wifi = wifi(
+    wifi(
         netif_stack.clone(),
         sys_loop_stack.clone(),
         default_nvs.clone(),
-    )?;
-
-    let workspace = Workspace {
-        recv_a: pins.gpio4.into_input()?,
-        recv_b: pins.gpio9.into_input()?,
-        recv_c: pins.gpio8.into_input()?,
-    };
-
-    loop {
-        send(&mut *wifi, calculate(read(&workspace)?)?)?;
-    }
-
-    Ok(())
+    )
 }
 
+pub struct ControlData {
+    pub offset: i32,
+}
