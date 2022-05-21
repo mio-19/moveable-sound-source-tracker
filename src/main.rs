@@ -164,6 +164,7 @@ fn wifi(
     Ok(wifi)
 }
 
+
 pub struct ControlData {
     pub offset: i32,
 }
@@ -179,6 +180,18 @@ pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::
 }
 
 
+fn read<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin>(workspace: &Workspace<GpioA, GpioB, GpioC>) -> Result<StateData> {
+    panic!("TODO")
+}
+
+fn calculate(data: StateData) -> Result<ControlData> {
+    panic!("TODO")
+}
+
+fn send(wifi: &mut EspWifi, data: ControlData) -> Result<()> {
+    panic!("TODO")
+}
+
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
 
@@ -189,6 +202,7 @@ fn main() -> Result<()> {
     let netif_stack = Arc::new(EspNetifStack::new()?);
     let sys_loop_stack = Arc::new(EspSysLoopStack::new()?);
     let default_nvs = Arc::new(EspDefaultNvs::new()?);
+
 
 
     let mut wifi = wifi(
@@ -203,6 +217,9 @@ fn main() -> Result<()> {
         recv_c: pins.gpio8.into_input()?,
     };
 
+    loop {
+        send(&mut *wifi, calculate(read(&workspace)?)?)?;
+    }
 
     Ok(())
 }
