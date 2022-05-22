@@ -82,6 +82,9 @@ use esp_idf_hal::prelude::*;
 use std::{borrow::Borrow, time::Duration};
 use esp_idf_hal::ledc;
 
+use pid::Pid;
+
+use arc_swap::ArcSwap;
 
 // reference https://github.com/esp-rs/esp-idf-hal/blob/447fcc3616e3a3643ca109d4bc7acf40754da9af/examples/ledc-threads.rs
 
@@ -97,6 +100,35 @@ struct EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1> where
 {
     positive: Channel<C0, H0, T0, P0>,
     negative: Channel<C1, H1, T1, P1>,
+}
+
+type DutyUnsigned = u32;
+type DutySigned = i32;
+
+impl<C0, H0, T0, P0, C1, H1, T1, P1> EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1> where
+    C0: HwChannel,
+    H0: HwTimer,
+    T0: Borrow<ledc::Timer<H0>>,
+    P0: gpio::OutputPin,
+    C1: HwChannel,
+    H1: HwTimer,
+    T1: Borrow<ledc::Timer<H1>>,
+    P1: gpio::OutputPin,
+{
+    fn get_max_duty_unsigned(&self) -> DutyUnsigned {
+        assert_eq!(self.positive.get_max_duty(), self.negative.get_max_duty());
+        self.positive.get_max_duty()
+    }
+    fn set_duty(&mut self, duty: DutySigned) -> Result<()> {
+        if duty > 0 {
+            self.positive.set_duty(duty as DutyUnsigned)?;
+            self.negative.set_duty(0)?;
+        } else {
+            self.positive.set_duty(0)?;
+            self.negative.set_duty(-duty as DutyUnsigned)?;
+        }
+        Ok(())
+    }
 }
 
 struct CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
@@ -121,6 +153,41 @@ struct CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P
     engine2: EnginePWMChannel<C2, H2, T2, P2, C3, H3, T3, P3>,
 }
 
+impl<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3>
+CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
+    C0: HwChannel,
+    H0: HwTimer,
+    T0: Borrow<ledc::Timer<H0>>,
+    P0: gpio::OutputPin,
+    C1: HwChannel,
+    H1: HwTimer,
+    T1: Borrow<ledc::Timer<H1>>,
+    P1: gpio::OutputPin,
+    C2: HwChannel,
+    H2: HwTimer,
+    T2: Borrow<ledc::Timer<H2>>,
+    P2: gpio::OutputPin,
+    C3: HwChannel,
+    H3: HwTimer,
+    T3: Borrow<ledc::Timer<H3>>,
+    P3: gpio::OutputPin,
+{
+    fn get_max_duty_unsigned(&self) -> DutyUnsigned {
+        assert_eq!(self.engine1.get_max_duty_unsigned(), self.engine2.get_max_duty_unsigned());
+        self.engine1.get_max_duty_unsigned()
+    }
+    fn set_duty_same(&mut self, duty: DutySigned) -> Result<()> {
+        self.engine1.set_duty(duty)?;
+        self.engine2.set_duty(duty)?;
+        Ok(())
+    }
+}
+
+fn recv(wifi: &mut EspWifi) -> Result<common::ControlData> {
+    panic!("TODO")
+}
+
+
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
 
@@ -131,12 +198,57 @@ fn main() -> Result<()> {
 
     let config = config::TimerConfig::default().frequency(25.kHz().into());
     let timer = Arc::new(ledc::Timer::new(peripherals.ledc.timer0, &config)?);
-    let channel0 = Channel::new(peripherals.ledc.channel0, timer.clone(), peripherals.pins.gpio4)?;
-    let channel1 = Channel::new(peripherals.ledc.channel1, timer.clone(), peripherals.pins.gpio5)?;
-    let channel2 = Channel::new(peripherals.ledc.channel2, timer.clone(), peripherals.pins.gpio6)?;
-    let channel3 = Channel::new(peripherals.ledc.channel3, timer.clone(), peripherals.pins.gpio7)?;
 
-    loop {}
+    let engine1 = EnginePWMChannel {
+        positive: Channel::new(peripherals.ledc.channel0, timer.clone(), peripherals.pins.gpio4)?,
+        negative: Channel::new(peripherals.ledc.channel1, timer.clone(), peripherals.pins.gpio5)?,
+    };
+    let engine2 = EnginePWMChannel {
+        positive: Channel::new(peripherals.ledc.channel2, timer.clone(), peripherals.pins.gpio6)?,
+        negative: Channel::new(peripherals.ledc.channel3, timer.clone(), peripherals.pins.gpio7)?,
+    };
+    let mut car_hardware = CarHardware {
+        engine1,
+        engine2,
+    };
+
+    let max_duty = car_hardware.get_max_duty_unsigned();
+
+    let mut pid: Pid<f64> = Pid::new(10.0, 0.0, 0.0, 100.0, 100.0, 100.0, 1000.0, 0.0);
+
+    let control: Arc<ArcSwap<_>> = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
+
+
+    let mut children = vec![];
+
+    println!("Rust main thread: {:?}", thread::current());
+
+    {
+        let control = control.clone();
+        children.push(thread::spawn(move || {
+            loop {
+                control.store(Arc::new(recv(&mut wifi).unwrap()));
+            }
+        }));
+    }
+
+    {
+        let control = control.clone();
+        let mut main_timer = EspTimerService::new()?.timer(move || {
+            let output = pid.next_control_output(control.load().offset as f64).output;
+            let duty = ((output as f64 / 1000.0) * (max_duty as f64)) as DutySigned;
+            car_hardware.engine1.set_duty(duty).unwrap();
+            car_hardware.engine2.set_duty(duty).unwrap();
+            // todo: alternative control a little bit in case the link is slow
+        })?;
+        // 0.1s
+        main_timer.every(Duration::from_millis(100))?;
+    }
+
+    for child in children {
+        // Wait for the thread to finish. Returns a result.
+        let _ = child.join();
+    }
 
     Ok(())
 }

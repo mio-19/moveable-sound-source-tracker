@@ -178,3 +178,9 @@ pub fn init_wifi() -> Result<Box<EspWifi>> {
 pub struct ControlData {
     pub offset: i32,
 }
+
+impl ControlData {
+    pub fn empty() -> Self {
+        Self { offset: 0 }
+    }
+}
