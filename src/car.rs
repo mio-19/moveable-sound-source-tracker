@@ -84,7 +84,7 @@ use esp_idf_hal::ledc;
 
 use pid::Pid;
 
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, AsRaw};
 
 // reference https://github.com/esp-rs/esp-idf-hal/blob/447fcc3616e3a3643ca109d4bc7acf40754da9af/examples/ledc-threads.rs
 
@@ -236,8 +236,10 @@ fn main() -> Result<()> {
         children.push(thread::spawn(move || {
             while **state.load() != State::Done {
                 control.store(Arc::new(recv(&mut wifi).unwrap()));
-                if **state.load() == State::Init {
-                    state.compare_and_swap(&Arc::new(State::Init), Arc::new(State::ForwardToLine));
+                let load = state.load();
+                let current = load.as_raw();
+                if **load == State::Init {
+                    state.compare_and_swap(current, Arc::new(State::ForwardToLine));
                 }
             }
         }));
