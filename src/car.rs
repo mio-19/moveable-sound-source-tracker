@@ -21,7 +21,7 @@ use smol;
 
 use embedded_hal::adc::OneShot;
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::{OutputPin, PinState};
 
 use embedded_svc::eth;
 use embedded_svc::eth::{Eth, TransitionalState};
@@ -131,7 +131,8 @@ impl<C0, H0, T0, P0, C1, H1, T1, P1> EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1
     }
 }
 
-struct CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
+struct CarHardware<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
+    BEEP: gpio::OutputPin,
     C0: HwChannel,
     H0: HwTimer,
     T0: Borrow<ledc::Timer<H0>>,
@@ -149,12 +150,14 @@ struct CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P
     T3: Borrow<ledc::Timer<H3>>,
     P3: gpio::OutputPin,
 {
+    beep: BEEP,
     engine1: EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1>,
     engine2: EnginePWMChannel<C2, H2, T2, P2, C3, H3, T3, P3>,
 }
 
-impl<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3>
-CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
+impl<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3>
+CarHardware<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
+    BEEP: gpio::OutputPin,
     C0: HwChannel,
     H0: HwTimer,
     T0: Borrow<ledc::Timer<H0>>,
@@ -205,18 +208,22 @@ fn main() -> Result<()> {
     let config = config::TimerConfig::default().frequency(25.kHz().into());
     let timer = Arc::new(ledc::Timer::new(peripherals.ledc.timer0, &config)?);
 
-    let engine1 = EnginePWMChannel {
-        positive: Channel::new(peripherals.ledc.channel0, timer.clone(), peripherals.pins.gpio4)?,
-        negative: Channel::new(peripherals.ledc.channel1, timer.clone(), peripherals.pins.gpio5)?,
-    };
-    let engine2 = EnginePWMChannel {
-        positive: Channel::new(peripherals.ledc.channel2, timer.clone(), peripherals.pins.gpio6)?,
-        negative: Channel::new(peripherals.ledc.channel3, timer.clone(), peripherals.pins.gpio7)?,
-    };
     let mut car_hardware = CarHardware {
-        engine1,
-        engine2,
+        beep: peripherals.pins.gpio0.into_output()?,
+        engine1: EnginePWMChannel {
+            positive: Channel::new(peripherals.ledc.channel0, timer.clone(), peripherals.pins.gpio4)?,
+            negative: Channel::new(peripherals.ledc.channel1, timer.clone(), peripherals.pins.gpio5)?,
+        },
+        engine2: EnginePWMChannel {
+            positive: Channel::new(peripherals.ledc.channel2, timer.clone(), peripherals.pins.gpio6)?,
+            negative: Channel::new(peripherals.ledc.channel3, timer.clone(), peripherals.pins.gpio7)?,
+        },
     };
+
+    // disable = low enable = high
+    let beep_disable_val = PinState::Low;
+    let beep_enable_val = PinState::High;
+
 
     let max_duty = car_hardware.get_max_duty_unsigned();
 
@@ -252,6 +259,7 @@ fn main() -> Result<()> {
         let mut task = move || -> Result<()> {
             match **state.load() {
                 State::Init => {
+                    car_hardware.beep.set_state(beep_disable_val);
                     car_hardware.engine1.set_duty(0)?;
                     car_hardware.engine2.set_duty(0)?;
                 }
@@ -263,6 +271,7 @@ fn main() -> Result<()> {
                     // todo: alternative control a little bit in case the link is slow
                 }
                 State::Done => {
+                    car_hardware.beep.set_state(beep_enable_val);
                     car_hardware.engine1.set_duty(0)?;
                     car_hardware.engine2.set_duty(0)?;
                     //main_timer.cancel();
