@@ -239,6 +239,7 @@ fn main() -> Result<()> {
                 let load = state.load();
                 let current = load.as_raw();
                 if **load == State::Init {
+                    drop(load);
                     state.compare_and_swap(current, Arc::new(State::ForwardToLine));
                 }
             }
