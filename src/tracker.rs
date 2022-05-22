@@ -76,7 +76,15 @@ use st7789;
 
 use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
-pub struct StateData {}
+// relative time
+pub struct StateData {
+    pub a: Duration,
+    pub b: Duration,
+    pub c: Duration,
+}
+
+// 0.1 seconds
+const TIMEOUT_CYCLE: Duration = Duration::from_millis(100);
 
 
 pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin> {

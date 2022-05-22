@@ -187,6 +187,12 @@ fn recv(wifi: &mut EspWifi) -> Result<common::ControlData> {
     panic!("TODO")
 }
 
+#[derive(PartialEq)]
+enum State {
+    Init,
+    ForwardToLine,
+    Done,
+}
 
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
@@ -218,6 +224,7 @@ fn main() -> Result<()> {
 
     let control: Arc<ArcSwap<_>> = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
 
+    let state: Arc<ArcSwap<_>> = Arc::new(ArcSwap::from(Arc::new(State::Init)));
 
     let mut children = vec![];
 
@@ -225,22 +232,43 @@ fn main() -> Result<()> {
 
     {
         let control = control.clone();
+        let state = state.clone();
         children.push(thread::spawn(move || {
-            loop {
+            while **state.load() != State::Done {
                 control.store(Arc::new(recv(&mut wifi).unwrap()));
+                if **state.load() == State::Init {
+                    state.store(Arc::new(State::ForwardToLine));
+                }
             }
         }));
     }
 
     {
         let control = control.clone();
-        let mut main_timer = EspTimerService::new()?.timer(move || {
-            let output = pid.next_control_output(control.load().offset as f64).output;
-            let duty = ((output as f64 / 1000.0) * (max_duty as f64)) as DutySigned;
-            car_hardware.engine1.set_duty(duty).unwrap();
-            car_hardware.engine2.set_duty(duty).unwrap();
-            // todo: alternative control a little bit in case the link is slow
-        })?;
+        let state = state.clone();
+        let mut task = move || -> Result<()> {
+            match **state.load() {
+                State::Init => {
+                    car_hardware.engine1.set_duty(0)?;
+                    car_hardware.engine2.set_duty(0)?;
+                }
+                State::ForwardToLine => {
+                    let output = pid.next_control_output(control.load().offset as f64).output;
+                    let duty = ((output as f64 / 1000.0) * (max_duty as f64)) as DutySigned;
+                    car_hardware.engine1.set_duty(duty)?;
+                    car_hardware.engine2.set_duty(duty)?;
+                    // todo: alternative control a little bit in case the link is slow
+                }
+                State::Done => {
+                    car_hardware.engine1.set_duty(0)?;
+                    car_hardware.engine2.set_duty(0)?;
+                    //main_timer.cancel();
+                }
+            }
+            Ok(())
+        };
+        task()?;
+        let mut main_timer = EspTimerService::new()?.timer(move || task().unwrap())?;
         // 0.1s
         main_timer.every(Duration::from_millis(100))?;
     }
