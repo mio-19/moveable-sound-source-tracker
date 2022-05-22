@@ -83,7 +83,6 @@ use std::{borrow::Borrow, time::Duration};
 use esp_idf_hal::ledc;
 
 
-
 // reference https://github.com/esp-rs/esp-idf-hal/blob/447fcc3616e3a3643ca109d4bc7acf40754da9af/examples/ledc-threads.rs
 
 struct EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1> where
@@ -98,6 +97,28 @@ struct EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1> where
 {
     positive: Channel<C0, H0, T0, P0>,
     negative: Channel<C1, H1, T1, P1>,
+}
+
+struct CarHardware<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
+    C0: HwChannel,
+    H0: HwTimer,
+    T0: Borrow<ledc::Timer<H0>>,
+    P0: gpio::OutputPin,
+    C1: HwChannel,
+    H1: HwTimer,
+    T1: Borrow<ledc::Timer<H1>>,
+    P1: gpio::OutputPin,
+    C2: HwChannel,
+    H2: HwTimer,
+    T2: Borrow<ledc::Timer<H2>>,
+    P2: gpio::OutputPin,
+    C3: HwChannel,
+    H3: HwTimer,
+    T3: Borrow<ledc::Timer<H3>>,
+    P3: gpio::OutputPin,
+{
+    engine1: EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1>,
+    engine2: EnginePWMChannel<C2, H2, T2, P2, C3, H3, T3, P3>,
 }
 
 fn main() -> Result<()> {
