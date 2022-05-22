@@ -237,7 +237,7 @@ fn main() -> Result<()> {
             while **state.load() != State::Done {
                 control.store(Arc::new(recv(&mut wifi).unwrap()));
                 if **state.load() == State::Init {
-                    state.store(Arc::new(State::ForwardToLine));
+                    state.compare_and_swap(&Arc::new(State::Init), Arc::new(State::ForwardToLine));
                 }
             }
         }));
