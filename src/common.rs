@@ -74,6 +74,8 @@ use st7789;
 
 use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
+use serde::{Serialize, Deserialize};
+
 fn ping(ip_settings: &ipv4::ClientSettings) -> Result<()> {
     info!("About to do some pings for {:?}", ip_settings);
 
@@ -212,6 +214,7 @@ pub fn init_wifi_server() -> Result<Box<EspWifi>> {
     )
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct ControlData {
     pub offset: i32,
 }

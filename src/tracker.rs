@@ -9,8 +9,10 @@ use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::{Condvar, Mutex};
 use std::{cell::RefCell, env, sync::atomic::*, sync::Arc, thread, time::*};
+use std::thread::JoinHandle;
 
 use anyhow::bail;
+use arc_swap::ArcSwap;
 
 use embedded_svc::mqtt::client::utils::ConnState;
 use log::*;
@@ -105,14 +107,46 @@ const RECV_VALID: PinState = PinState::Low;
 const RECV_INVALID: PinState = PinState::Low;
 
 
-
 fn calculate(data: StateData) -> Result<common::ControlData> {
     panic!("TODO")
 }
 
-fn send(wifi: &mut EspWifi, data: common::ControlData) -> Result<()> {
-    panic!("TODO")
+fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+    fn bind_accept(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+        info!("About to bind the service to port 8080");
+
+        let listener = TcpListener::bind("0.0.0.0:8080")?;
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    info!("Accepted client");
+
+                    let data = data.clone();
+                    thread::spawn(move || {
+                        handle_client(data, stream);
+                    });
+                }
+                Err(e) => {
+                    error!("Error: {}", e);
+                }
+            }
+        }
+
+        unreachable!()
+    }
+
+    fn handle_client(data: Arc<ArcSwap<common::ControlData>>, mut stream: TcpStream) {
+        loop {
+            stream.write_all(&bincode::serialize(&**data.load()).unwrap()).unwrap();
+        }
+    }
+
+    thread::spawn(|| bind_accept(data).unwrap());
+
+    Ok(())
 }
+
 
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
@@ -128,8 +162,12 @@ fn main() -> Result<()> {
         recv_c: pins.gpio8.into_input()?,
     };
 
+    let control = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
+
+    send_server(control.clone())?;
+
     loop {
-        send(&mut *wifi, calculate(read(&workspace)?)?)?;
+        control.store(Arc::new(calculate(read(&workspace)?)?));
     }
 
     Ok(())
