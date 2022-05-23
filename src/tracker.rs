@@ -87,6 +87,8 @@ pub struct StateData {
 
 // 0.1 seconds
 const VALID_TIME: Duration = Duration::from_millis(100);
+// 0.05 seconds
+const SOUND_RANGE_TIME: Duration = Duration::from_millis(50);
 
 
 pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin> {
@@ -131,7 +133,26 @@ fn read_loop<CB: FnMut(StateData) -> Result<()>, GpioA: gpio::InputPin + InputPi
             last_c = now;
         }
 
-        if a_val && b_val && c_val && now.duration_since(last_a) > VALID_TIME && now.duration_since(last_b) > VALID_TIME && now.duration_since(last_c) > VALID_TIME {
+        let last_earlistest = if last_a <= last_b && last_a <= last_c {
+            last_a
+        } else if last_b <= last_a && last_b <= last_c {
+            last_b
+        } else {
+            if !(last_c <= last_a && last_c <= last_b) {
+                panic!("last_c is not earlistest");
+            }
+            last_c
+        };
+
+        if a_val &&
+            b_val &&
+            c_val &&
+            now.duration_since(last_a) > VALID_TIME &&
+            now.duration_since(last_b) > VALID_TIME &&
+            now.duration_since(last_c) > VALID_TIME &&
+            last_a.duration_since(last_earlistest) < SOUND_RANGE_TIME &&
+            last_b.duration_since(last_earlistest) < SOUND_RANGE_TIME &&
+            last_c.duration_since(last_earlistest) < SOUND_RANGE_TIME {
             let data = StateData {
                 a: last_a,
                 b: last_b,
@@ -139,7 +160,6 @@ fn read_loop<CB: FnMut(StateData) -> Result<()>, GpioA: gpio::InputPin + InputPi
             };
             callback(data)?;
         }
-
     }
     Ok(())
 }
