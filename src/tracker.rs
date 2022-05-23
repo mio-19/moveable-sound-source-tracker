@@ -138,7 +138,7 @@ fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
 
     fn handle_client(data: Arc<ArcSwap<common::ControlData>>, mut stream: TcpStream) {
         loop {
-            stream.write_all(&bincode::serialize(&**data.load()).unwrap()).unwrap();
+            stream.write_all(data.load().to_slice()).unwrap();
         }
     }
 

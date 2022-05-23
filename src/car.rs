@@ -187,6 +187,21 @@ fn recv(wifi: &mut EspWifi) -> Result<common::ControlData> {
     panic!("TODO")
 }
 
+fn recv_client_thread(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+    info!("About to open a TCP connection to 192.168.71.1 port 8080");
+
+    let mut stream = TcpStream::connect("192.168.71.1:8080")?;
+
+    let mut buffer = vec![0; common::ControlData::size()];
+
+    loop {
+        stream.read_exact(&mut buffer)?;
+        data.store(Arc::new(*common::ControlData::from_slice(&buffer)));
+    }
+
+    Ok(())
+}
+
 #[derive(PartialEq)]
 enum State {
     Init,
@@ -250,6 +265,11 @@ fn main() -> Result<()> {
                 }
             }
         }));
+    }
+
+    {
+        let control = control.clone();
+        children.push(thread::spawn(move || recv_client_thread(control).unwrap()));
     }
 
     {

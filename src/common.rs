@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 #![allow(clippy::single_component_path_imports)]
 
-use std::fs;
+use std::{fs, mem, slice};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -73,8 +73,6 @@ use ssd1306::mode::DisplayConfig;
 use st7789;
 
 use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
-
-use serde::{Serialize, Deserialize};
 
 fn ping(ip_settings: &ipv4::ClientSettings) -> Result<()> {
     info!("About to do some pings for {:?}", ip_settings);
@@ -198,7 +196,7 @@ pub fn init_wifi_client() -> Result<Box<EspWifi>> {
     wifi_client(
         netif_stack.clone(),
         sys_loop_stack.clone(),
-        default_nvs.clone()
+        default_nvs.clone(),
     )
 }
 
@@ -210,17 +208,48 @@ pub fn init_wifi_server() -> Result<Box<EspWifi>> {
     wifi_server(
         netif_stack.clone(),
         sys_loop_stack.clone(),
-        default_nvs.clone()
+        default_nvs.clone(),
     )
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(PartialEq, Debug, Copy, Clone)]
+#[repr(packed)]
 pub struct ControlData {
     pub offset: i32,
+}
+
+// https://stackoverflow.com/questions/25917260/getting-raw-bytes-from-packed-struct/25918452#25918452
+pub fn raw_byte_repr<'a, T>(ptr: &'a T) -> &'a [u8]
+{
+    let p: *const T = ptr;     // the same operator is used as with references
+    let p: *const u8 = p as *const u8;  // convert between pointer types
+    unsafe {
+        slice::from_raw_parts(p, mem::size_of::<T>())
+    }
+}
+
+pub fn struct_repr<'a, T>(ptr: &'a [u8]) -> &'a T {
+    if ptr.len() != std::mem::size_of::<T>() {
+        panic!("Unexpected len");
+    }
+    let p:*const u8 = ptr.as_ptr();
+    let p: *const T = p as *const T;
+    unsafe {
+        std::mem::transmute(p)
+    }
 }
 
 impl ControlData {
     pub fn empty() -> Self {
         Self { offset: 0 }
+    }
+    pub fn size() -> usize {
+        mem::size_of::<ControlData>()
+    }
+    pub fn to_slice(&self) -> &[u8] {
+        raw_byte_repr(self)
+    }
+    pub fn from_slice(x: &[u8]) -> &Self {
+        struct_repr(x)
     }
 }
