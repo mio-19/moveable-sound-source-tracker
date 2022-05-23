@@ -1,13 +1,6 @@
 #![allow(unused_imports)]
 #![allow(clippy::single_component_path_imports)]
 
-#[allow(dead_code)]
-#[cfg(not(feature = "qemu"))]
-const SSID: &str = env!("RUST_ESP32_STD_DEMO_WIFI_SSID");
-#[allow(dead_code)]
-#[cfg(not(feature = "qemu"))]
-const PASS: &str = env!("RUST_ESP32_STD_DEMO_WIFI_PASS");
-
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -98,7 +91,7 @@ fn ping(ip_settings: &ipv4::ClientSettings) -> Result<()> {
     Ok(())
 }
 
-fn wifi(
+fn wifi_client(
     netif_stack: Arc<EspNetifStack>,
     sys_loop_stack: Arc<EspSysLoopStack>,
     default_nvs: Arc<EspDefaultNvs>,
@@ -125,18 +118,13 @@ fn wifi(
         None
     };
 
-    wifi.set_configuration(&Configuration::Mixed(
+    wifi.set_configuration(&Configuration::Client(
         ClientConfiguration {
             ssid: SSID.into(),
             password: PASS.into(),
             channel,
             ..Default::default()
-        },
-        AccessPointConfiguration {
-            ssid: "aptest".into(),
-            channel: channel.unwrap_or(1),
-            ..Default::default()
-        },
+        }
     ))?;
 
     info!("Wifi configuration set, about to get status");
@@ -148,7 +136,7 @@ fn wifi(
 
     if let Status(
         ClientStatus::Started(ClientConnectionStatus::Connected(ClientIpStatus::Done(ip_settings))),
-        ApStatus::Started(ApIpStatus::Done),
+        _,
     ) = status
     {
         info!("Wifi connected");
@@ -161,17 +149,66 @@ fn wifi(
     Ok(wifi)
 }
 
+const SSID: &str = "ESP32-WIFI";
+const PASS: &str = "ESP32-WIFI-PASS";
 
+fn wifi_server(
+    netif_stack: Arc<EspNetifStack>,
+    sys_loop_stack: Arc<EspSysLoopStack>,
+    default_nvs: Arc<EspDefaultNvs>,
+) -> Result<Box<EspWifi>> {
+    let mut wifi = Box::new(EspWifi::new(netif_stack, sys_loop_stack, default_nvs)?);
 
-pub fn init_wifi() -> Result<Box<EspWifi>> {
+    wifi.set_configuration(&Configuration::AccessPoint(
+        AccessPointConfiguration {
+            ssid: SSID.into(),
+            password: PASS.into(),
+            channel: 1,
+            ..Default::default()
+        },
+    ))?;
+
+    info!("Wifi configuration set, about to get status");
+
+    wifi.wait_status_with_timeout(Duration::from_secs(20), |status| !status.is_transitional())
+        .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
+
+    let status = wifi.get_status();
+
+    if let Status(
+        _,
+        ApStatus::Started(ApIpStatus::Done),
+    ) = status
+    {
+        info!("Wifi connected");
+    } else {
+        bail!("Unexpected Wifi status: {:?}", status);
+    }
+
+    Ok(wifi)
+}
+
+pub fn init_wifi_client() -> Result<Box<EspWifi>> {
     let netif_stack = Arc::new(EspNetifStack::new()?);
     let sys_loop_stack = Arc::new(EspSysLoopStack::new()?);
     let default_nvs = Arc::new(EspDefaultNvs::new()?);
 
-    wifi(
+    wifi_client(
         netif_stack.clone(),
         sys_loop_stack.clone(),
-        default_nvs.clone(),
+        default_nvs.clone()
+    )
+}
+
+pub fn init_wifi_server() -> Result<Box<EspWifi>> {
+    let netif_stack = Arc::new(EspNetifStack::new()?);
+    let sys_loop_stack = Arc::new(EspSysLoopStack::new()?);
+    let default_nvs = Arc::new(EspDefaultNvs::new()?);
+
+    wifi_server(
+        netif_stack.clone(),
+        sys_loop_stack.clone(),
+        default_nvs.clone()
     )
 }
 

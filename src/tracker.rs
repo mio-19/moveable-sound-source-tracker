@@ -106,7 +106,6 @@ const RECV_INVALID: PinState = PinState::Low;
 
 
 
-
 fn calculate(data: StateData) -> Result<common::ControlData> {
     panic!("TODO")
 }
@@ -121,7 +120,7 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take().unwrap();
     let pins = peripherals.pins;
 
-    let mut wifi = common::init_wifi()?;
+    let mut wifi = common::init_wifi_server()?;
 
     let workspace = Workspace {
         recv_a: pins.gpio4.into_input()?,

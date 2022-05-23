@@ -201,7 +201,7 @@ fn main() -> Result<()> {
 
     let peripherals = Peripherals::take().unwrap();
 
-    let mut wifi = common::init_wifi()?;
+    let mut wifi = common::init_wifi_client()?;
 
 
     let config = config::TimerConfig::default().frequency(25.kHz().into());
