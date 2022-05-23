@@ -131,8 +131,7 @@ impl<C0, H0, T0, P0, C1, H1, T1, P1> EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1
     }
 }
 
-struct CarHardware<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
-    BEEP: gpio::OutputPin,
+struct CarEngines<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
     C0: HwChannel,
     H0: HwTimer,
     T0: Borrow<ledc::Timer<H0>>,
@@ -150,14 +149,12 @@ struct CarHardware<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3,
     T3: Borrow<ledc::Timer<H3>>,
     P3: gpio::OutputPin,
 {
-    beep: BEEP,
     engine1: EnginePWMChannel<C0, H0, T0, P0, C1, H1, T1, P1>,
     engine2: EnginePWMChannel<C2, H2, T2, P2, C3, H3, T3, P3>,
 }
 
-impl<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3>
-CarHardware<BEEP, C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
-    BEEP: gpio::OutputPin,
+impl<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3>
+CarEngines<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
     C0: HwChannel,
     H0: HwTimer,
     T0: Borrow<ledc::Timer<H0>>,
@@ -197,6 +194,8 @@ enum State {
     Done,
 }
 
+const BEEP_HALF_CYCLE: Duration = Duration::from_millis(200);
+
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
 
@@ -208,8 +207,7 @@ fn main() -> Result<()> {
     let config = config::TimerConfig::default().frequency(25.kHz().into());
     let timer = Arc::new(ledc::Timer::new(peripherals.ledc.timer0, &config)?);
 
-    let mut car_hardware = CarHardware {
-        beep: peripherals.pins.gpio0.into_output()?,
+    let mut car_engines = CarEngines {
         engine1: EnginePWMChannel {
             positive: Channel::new(peripherals.ledc.channel0, timer.clone(), peripherals.pins.gpio4)?,
             negative: Channel::new(peripherals.ledc.channel1, timer.clone(), peripherals.pins.gpio5)?,
@@ -219,13 +217,14 @@ fn main() -> Result<()> {
             negative: Channel::new(peripherals.ledc.channel3, timer.clone(), peripherals.pins.gpio7)?,
         },
     };
+    let mut car_beep = peripherals.pins.gpio0.into_output()?;
 
     // disable = low enable = high
     let beep_disable_val = PinState::Low;
     let beep_enable_val = PinState::High;
 
 
-    let max_duty = car_hardware.get_max_duty_unsigned();
+    let max_duty = car_engines.get_max_duty_unsigned();
 
     let mut pid: Pid<f64> = Pid::new(10.0, 0.0, 0.0, 100.0, 100.0, 100.0, 1000.0, 0.0);
 
@@ -259,30 +258,51 @@ fn main() -> Result<()> {
         let mut task = move || -> Result<()> {
             match **state.load() {
                 State::Init => {
-                    car_hardware.beep.set_state(beep_disable_val);
-                    car_hardware.engine1.set_duty(0)?;
-                    car_hardware.engine2.set_duty(0)?;
+                    car_engines.engine1.set_duty(0)?;
+                    car_engines.engine2.set_duty(0)?;
                 }
                 State::ForwardToLine => {
                     let output = pid.next_control_output(control.load().offset as f64).output;
                     let duty = ((output as f64 / 1000.0) * (max_duty as f64)) as DutySigned;
-                    car_hardware.engine1.set_duty(duty)?;
-                    car_hardware.engine2.set_duty(duty)?;
+                    car_engines.engine1.set_duty(duty)?;
+                    car_engines.engine2.set_duty(duty)?;
                     // todo: alternative control a little bit in case the link is slow
                 }
                 State::Done => {
-                    car_hardware.beep.set_state(beep_enable_val);
-                    car_hardware.engine1.set_duty(0)?;
-                    car_hardware.engine2.set_duty(0)?;
+                    car_engines.engine1.set_duty(0)?;
+                    car_engines.engine2.set_duty(0)?;
                     //main_timer.cancel();
                 }
             }
             Ok(())
         };
         task()?;
-        let mut main_timer = EspTimerService::new()?.timer(move || task().unwrap())?;
+        let mut engines_timer = EspTimerService::new()?.timer(move || task().unwrap())?;
         // 0.1s
-        main_timer.every(Duration::from_millis(100))?;
+        engines_timer.every(Duration::from_millis(100))?;
+    }
+
+    {
+        let state = state.clone();
+        let mut beeping = beep_disable_val;
+        let mut task = move || -> Result<()> {
+            match **state.load() {
+                State::Init => {
+                    car_beep.set_state(beep_disable_val)?;
+                }
+                State::ForwardToLine => {
+                    car_beep.set_state(beeping)?;
+                    beeping = !beeping;
+                }
+                State::Done => {
+                    car_beep.set_state(beep_enable_val)?;
+                }
+            }
+            Ok(())
+        };
+        task()?;
+        let mut beep_timer = EspTimerService::new()?.timer(move || task().unwrap())?;
+        beep_timer.every(BEEP_HALF_CYCLE)?;
     }
 
     for child in children {

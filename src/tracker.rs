@@ -21,7 +21,7 @@ use smol;
 
 use embedded_hal::adc::OneShot;
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::{OutputPin, PinState};
 
 use embedded_svc::eth;
 use embedded_svc::eth::{Eth, TransitionalState};
@@ -85,6 +85,8 @@ pub struct StateData {
 
 // 0.1 seconds
 const TIMEOUT_CYCLE: Duration = Duration::from_millis(100);
+// 0.1 seconds
+const VALID_TIME: Duration = Duration::from_millis(100);
 
 
 pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin> {
@@ -98,6 +100,12 @@ pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::
 fn read<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin>(workspace: &Workspace<GpioA, GpioB, GpioC>) -> Result<StateData> {
     panic!("TODO")
 }
+
+const RECV_VALID: PinState = PinState::Low;
+const RECV_INVALID: PinState = PinState::Low;
+
+
+
 
 fn calculate(data: StateData) -> Result<common::ControlData> {
     panic!("TODO")
