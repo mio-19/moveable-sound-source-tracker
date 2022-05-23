@@ -23,7 +23,7 @@ use smol;
 
 use embedded_hal::adc::OneShot;
 use embedded_hal::blocking::delay::DelayMs;
-use embedded_hal::digital::v2::{OutputPin, PinState};
+use embedded_hal::digital::v2::{InputPin, OutputPin, PinState};
 
 use embedded_svc::eth;
 use embedded_svc::eth::{Eth, TransitionalState};
@@ -80,13 +80,11 @@ use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
 // relative time
 pub struct StateData {
-    pub a: Duration,
-    pub b: Duration,
-    pub c: Duration,
+    pub a: Instant,
+    pub b: Instant,
+    pub c: Instant,
 }
 
-// 0.1 seconds
-const TIMEOUT_CYCLE: Duration = Duration::from_millis(100);
 // 0.1 seconds
 const VALID_TIME: Duration = Duration::from_millis(100);
 
@@ -98,13 +96,53 @@ pub struct Workspace<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::
     pub recv_c: GpioC,
 }
 
+const RECV_VALID: bool = true;
+const RECV_INVALID: bool = !RECV_VALID;
 
-fn read<GpioA: gpio::InputPin, GpioB: gpio::InputPin, GpioC: gpio::InputPin>(workspace: &Workspace<GpioA, GpioB, GpioC>) -> Result<StateData> {
-    panic!("TODO")
+fn read_loop<CB: FnMut(StateData) -> Result<()>, GpioA: gpio::InputPin + InputPin, GpioB: gpio::InputPin + InputPin, GpioC: gpio::InputPin + InputPin>(workspace: &Workspace<GpioA, GpioB, GpioC>, mut callback: CB) -> Result<()>
+    where
+        <GpioA as embedded_hal::digital::v2::InputPin>::Error: std::error::Error + Sync + Send + 'static,
+        <GpioB as embedded_hal::digital::v2::InputPin>::Error: std::error::Error + Sync + Send + 'static,
+        <GpioC as embedded_hal::digital::v2::InputPin>::Error: std::error::Error + Sync + Send + 'static,
+{
+    let now = Instant::now();
+    let mut last_a = now;
+    let mut last_b = now;
+    let mut last_c = now;
+    let mut last_a_val = RECV_INVALID;
+    let mut last_b_val = RECV_INVALID;
+    let mut last_c_val = RECV_INVALID;
+    loop {
+        let a_val = workspace.recv_a.is_high()? == RECV_VALID;
+        let b_val = workspace.recv_b.is_high()? == RECV_VALID;
+        let c_val = workspace.recv_c.is_high()? == RECV_VALID;
+        let now = Instant::now();
+
+        if a_val != last_a_val {
+            last_a_val = a_val;
+            last_a = now;
+        }
+        if b_val != last_b_val {
+            last_b_val = b_val;
+            last_b = now;
+        }
+        if c_val != last_c_val {
+            last_c_val = c_val;
+            last_c = now;
+        }
+
+        if a_val && b_val && c_val && now.duration_since(last_a) > VALID_TIME && now.duration_since(last_b) > VALID_TIME && now.duration_since(last_c) > VALID_TIME {
+            let data = StateData {
+                a: last_a,
+                b: last_b,
+                c: last_c,
+            };
+            callback(data)?;
+        }
+
+    }
+    Ok(())
 }
-
-const RECV_VALID: PinState = PinState::Low;
-const RECV_INVALID: PinState = PinState::Low;
 
 
 fn calculate(data: StateData) -> Result<common::ControlData> {
@@ -166,9 +204,10 @@ fn main() -> Result<()> {
 
     send_server(control.clone())?;
 
-    loop {
-        control.store(Arc::new(calculate(read(&workspace)?)?));
-    }
+    read_loop(&workspace, |data| {
+        control.store(Arc::new(calculate(data)?));
+        Ok(())
+    })?;
 
     Ok(())
 }
