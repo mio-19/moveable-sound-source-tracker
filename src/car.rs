@@ -183,11 +183,7 @@ CarEngines<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
     }
 }
 
-fn recv(wifi: &mut EspWifi) -> Result<common::ControlData> {
-    panic!("TODO")
-}
-
-fn recv_client_thread(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+fn recv_client_thread<CB: FnMut(common::ControlData) -> Result<()>, Cont: Fn() -> bool>(cont: Cont, mut cb: CB) -> Result<()> {
     info!("About to open a TCP connection to 192.168.71.1 port 8080");
 
     let mut stream = TcpStream::connect("192.168.71.1:8080")?;
@@ -195,8 +191,10 @@ fn recv_client_thread(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
     let mut buffer = vec![0; common::ControlData::size()];
 
     loop {
+        if !cont() { break; }
         stream.read_exact(&mut buffer)?;
-        data.store(Arc::new(*common::ControlData::from_slice(&buffer)));
+        if !cont() { break; }
+        cb(*common::ControlData::from_slice(&buffer))?;
     }
 
     Ok(())
@@ -254,22 +252,19 @@ fn main() -> Result<()> {
     {
         let control = control.clone();
         let state = state.clone();
-        children.push(thread::spawn(move || {
-            while **state.load() != State::Done {
-                control.store(Arc::new(recv(&mut wifi).unwrap()));
+        let state0 = state.clone();
+        children.push(thread::spawn(move || recv_client_thread(
+            move || { **state0.load() != State::Done },
+            move |data| {
+                control.store(Arc::new(data));
                 let load = state.load();
                 let current = load.as_raw();
                 if **load == State::Init {
                     drop(load);
                     state.compare_and_swap(current, Arc::new(State::ForwardToLine));
                 }
-            }
-        }));
-    }
-
-    {
-        let control = control.clone();
-        children.push(thread::spawn(move || recv_client_thread(control).unwrap()));
+                Ok(())
+            }).unwrap()));
     }
 
     {

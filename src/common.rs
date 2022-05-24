@@ -215,7 +215,7 @@ pub fn init_wifi_server() -> Result<Box<EspWifi>> {
 #[derive(PartialEq, Debug, Copy, Clone)]
 #[repr(packed)]
 pub struct ControlData {
-    pub offset: i32,
+    pub offset: i128,
 }
 
 // https://stackoverflow.com/questions/25917260/getting-raw-bytes-from-packed-struct/25918452#25918452

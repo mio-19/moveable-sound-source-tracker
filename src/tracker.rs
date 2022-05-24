@@ -166,7 +166,11 @@ fn read_loop<CB: FnMut(StateData) -> Result<()>, GpioA: gpio::InputPin + InputPi
 
 
 fn calculate(data: StateData) -> Result<common::ControlData> {
-    panic!("TODO")
+    if data.a >= data.b {
+        Ok(common::ControlData { offset: data.a.duration_since(data.b).as_nanos() as i128 })
+    } else {
+        Ok(common::ControlData { offset: -(data.b.duration_since(data.a).as_nanos() as i128) })
+    }
 }
 
 fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
