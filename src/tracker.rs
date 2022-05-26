@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 #![allow(clippy::single_component_path_imports)]
+//#![feature(backtrace)]
 
 mod common;
 
@@ -175,8 +176,9 @@ fn calculate(data: StateData) -> Result<common::ControlData> {
     }
 }
 
-fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
-    fn bind_accept(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+fn send_server(_wifi: Box<EspWifi>, data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+    // keep wifi undropped
+    fn bind_accept(_wifi: Box<EspWifi>, data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
         info!("About to bind the service to port 8080");
 
         let listener = TcpListener::bind("0.0.0.0:8080")?;
@@ -206,7 +208,7 @@ fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
         }
     }
 
-    thread::spawn(|| bind_accept(data).unwrap());
+    thread::spawn(|| bind_accept(_wifi, data).unwrap());
 
     Ok(())
 }
@@ -214,6 +216,8 @@ fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
 
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
+
+    //env::set_var("RUST_BACKTRACE", "1");
 
     let peripherals = Peripherals::take().unwrap();
     let pins = peripherals.pins;
@@ -228,12 +232,14 @@ fn main() -> Result<()> {
 
     let control = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
 
-    send_server(control.clone())?;
+    send_server(wifi, control.clone())?;
 
-    read_loop(&workspace, |data| {
-        control.store(Arc::new(calculate(data)?));
-        Ok(())
-    })?;
+    thread::spawn(move ||{
+        read_loop(&workspace, |data| {
+            control.store(Arc::new(calculate(data)?));
+            Ok(())
+        }).unwrap();
+    });
 
     Ok(())
 }
