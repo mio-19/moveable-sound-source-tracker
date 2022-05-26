@@ -78,6 +78,8 @@ use st7789;
 
 use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
+use esp_idf_hal::gpio::Pull;
+
 // relative time
 pub struct StateData {
     pub a: Instant,
@@ -219,9 +221,9 @@ fn main() -> Result<()> {
     let mut wifi = common::init_wifi_server()?;
 
     let workspace = Workspace {
-        recv_a: pins.gpio4.into_input()?,
-        recv_b: pins.gpio9.into_input()?,
-        recv_c: pins.gpio8.into_input()?,
+        recv_a: pins.gpio4.into_input()?.into_pull_up()?,
+        recv_b: pins.gpio0.into_input()?.into_pull_up()?,
+        recv_c: pins.gpio2.into_input()?.into_pull_up()?,
     };
 
     let control = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
