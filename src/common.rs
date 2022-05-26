@@ -121,7 +121,7 @@ fn wifi_client(
     wifi.set_configuration(&Configuration::Client(
         ClientConfiguration {
             ssid: SSID.into(),
-            password: PASS.into(),
+            //password: PASS.into(),
             channel,
             ..Default::default()
         }
@@ -150,7 +150,7 @@ fn wifi_client(
 }
 
 const SSID: &str = "ESP32-WIFI";
-const PASS: &str = "ESP32-WIFI-PASS";
+//const PASS: &str = "ESP32-WIFI-PASS";
 
 fn wifi_server(
     netif_stack: Arc<EspNetifStack>,
@@ -162,7 +162,8 @@ fn wifi_server(
     wifi.set_configuration(&Configuration::AccessPoint(
         AccessPointConfiguration {
             ssid: SSID.into(),
-            password: PASS.into(),
+            //password: PASS.into(),
+            auth_method: AuthMethod::None,
             channel: 1,
             ..Default::default()
         },

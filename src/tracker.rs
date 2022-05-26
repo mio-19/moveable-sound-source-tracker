@@ -176,9 +176,9 @@ fn calculate(data: StateData) -> Result<common::ControlData> {
     }
 }
 
-fn send_server(_wifi: Box<EspWifi>, data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
     // keep wifi undropped
-    fn bind_accept(_wifi: Box<EspWifi>, data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
+    fn bind_accept(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
         info!("About to bind the service to port 8080");
 
         let listener = TcpListener::bind("0.0.0.0:8080")?;
@@ -208,7 +208,7 @@ fn send_server(_wifi: Box<EspWifi>, data: Arc<ArcSwap<common::ControlData>>) -> 
         }
     }
 
-    thread::spawn(|| bind_accept(_wifi, data).unwrap());
+    thread::spawn(|| bind_accept(data).unwrap());
 
     Ok(())
 }
@@ -232,7 +232,13 @@ fn main() -> Result<()> {
 
     let control = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
 
-    send_server(wifi, control.clone())?;
+    send_server(control.clone())?;
+
+    // wifi holder
+    thread::spawn(move ||{
+        loop {}
+        drop(wifi);
+    });
 
     thread::spawn(move ||{
         read_loop(&workspace, |data| {
