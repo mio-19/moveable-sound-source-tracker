@@ -66,7 +66,6 @@ use embedded_graphics::pixelcolor::*;
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::*;
 use embedded_graphics::text::*;
-use embedded_svc::wifi::TransitionalState as OtherTransitionalState;
 
 use ili9341;
 use ssd1306;
@@ -74,7 +73,6 @@ use ssd1306::mode::DisplayConfig;
 use st7789;
 
 use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
-
 
 fn ping(ip_settings: &ipv4::ClientSettings) -> Result<()> {
     info!("About to do some pings for {:?}", ip_settings);
@@ -131,7 +129,7 @@ fn wifi_client(
 
     info!("Wifi configuration set, about to get status");
 
-    wifi.wait_status_with_timeout(Duration::from_secs(60), |status| status.0.get_operating().is_some())
+    wifi.wait_status_with_timeout(Duration::from_secs(20), |status| !status.is_transitional())
         .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
 
     let status = wifi.get_status();
@@ -145,7 +143,7 @@ fn wifi_client(
 
         ping(&ip_settings)?;
     } else {
-        warn!("Unexpected Wifi status: {:?}", status);
+        bail!("Unexpected Wifi status: {:?}", status);
     }
 
     Ok(wifi)
@@ -173,7 +171,7 @@ fn wifi_server(
 
     info!("Wifi configuration set, about to get status");
 
-    wifi.wait_status_with_timeout(Duration::from_secs(60), |status| status.1.get_operating().is_some())
+    wifi.wait_status_with_timeout(Duration::from_secs(20), |status| !status.is_transitional())
         .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
 
     let status = wifi.get_status();
@@ -185,7 +183,7 @@ fn wifi_server(
     {
         info!("Wifi connected");
     } else {
-        warn!("Unexpected Wifi status: {:?}", status);
+        bail!("Unexpected Wifi status: {:?}", status);
     }
 
     Ok(wifi)
