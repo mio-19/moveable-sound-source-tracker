@@ -186,7 +186,17 @@ CarEngines<C0, H0, T0, P0, C1, H1, T1, P1, C2, H2, T2, P2, C3, H3, T3, P3> where
 fn recv_client_thread<CB: FnMut(common::ControlData) -> Result<()>, Cont: Fn() -> bool>(cont: Cont, mut cb: CB) -> Result<()> {
     info!("About to open a TCP connection to 192.168.71.1 port 8080");
 
-    let mut stream = TcpStream::connect("192.168.71.1:8080")?;
+
+
+    let mut stream = loop {
+        match TcpStream::connect("192.168.71.1:8080") {
+            Ok(stream) => break stream,
+            Err(e) => {
+                warn!("Failed to connect to server: {:?}", e);
+                std::thread::sleep(Duration::from_millis(1000));
+            }
+        }
+    };
 
     let mut buffer = vec![0; common::ControlData::size()];
 
@@ -256,6 +266,7 @@ fn main() -> Result<()> {
         children.push(thread::spawn(move || recv_client_thread(
             move || { **state0.load() != State::Done },
             move |data| {
+                println!("Got data {:?}", data);
                 control.store(Arc::new(data));
                 let load = state.load();
                 let current = load.as_raw();
