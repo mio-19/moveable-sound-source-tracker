@@ -81,6 +81,8 @@ use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
 use esp_idf_hal::gpio::Pull;
 
+use smol::io::AsyncWriteExt;
+
 // relative time
 pub struct StateData {
     pub a: Instant,
@@ -214,8 +216,52 @@ fn send_server(data: Arc<ArcSwap<common::ControlData>>) -> Result<()> {
 }
 
 
+fn send_server_async(data: Arc<ArcSwap<common::ControlData>>) -> anyhow::Result<()> {
+    async fn tcp_bind(data: Arc<ArcSwap<common::ControlData>>) -> smol::io::Result<()> {
+        /// Echoes messages from the client back to it.
+        async fn echo(data: Arc<ArcSwap<common::ControlData>>, mut stream: smol::Async<TcpStream>) -> smol::io::Result<()> {
+            stream.write_all(data.load().to_slice()).await?;
+            Ok(())
+        }
+
+        // Create a listener.
+        let listener = smol::Async::<TcpListener>::bind(([0, 0, 0, 0], 8081))?;
+
+        // Accept clients in a loop.
+        loop {
+            let (stream, peer_addr) = listener.accept().await?;
+            info!("Accepted client: {}", peer_addr);
+
+            // Spawn a task that echoes messages from the client back to it.
+            smol::spawn(echo(data.clone(), stream)).detach();
+        }
+    }
+
+    info!("About to bind a simple echo service to port 8081 using async (smol-rs)!");
+
+    #[allow(clippy::needless_update)]
+    {
+        esp_idf_sys::esp!(unsafe {
+                esp_idf_sys::esp_vfs_eventfd_register(&esp_idf_sys::esp_vfs_eventfd_config_t {
+                    max_fds: 5,
+                    ..Default::default()
+                })
+            })?;
+    }
+
+    thread::Builder::new().stack_size(4096).spawn(move || {
+        smol::block_on(tcp_bind(data)).unwrap();
+    })?;
+
+    Ok(())
+}
+
+
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
+
+    // Bind the log crate to the ESP Logging facilities
+    esp_idf_svc::log::EspLogger::initialize_default();
 
     //env::set_var("RUST_BACKTRACE", "1");
 

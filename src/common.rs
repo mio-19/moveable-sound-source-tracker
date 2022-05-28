@@ -80,7 +80,7 @@ fn ping(ip_settings: &ipv4::ClientSettings) -> Result<()> {
     let ping_summary =
         ping::EspPing::default().ping(ip_settings.subnet.gateway, &Default::default())?;
     if ping_summary.transmitted != ping_summary.received {
-        bail!(
+        warn!(
             "Pinging gateway {} resulted in timeouts",
             ip_settings.subnet.gateway
         );
@@ -130,7 +130,8 @@ fn wifi_client(
     info!("Wifi configuration set, about to get status");
 
     wifi.wait_status_with_timeout(Duration::from_secs(20), |status| !status.is_transitional())
-        .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
+        // .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
+        .unwrap_or_else(|e| warn!("Unexpected Wifi status: {:?}", e));
 
     let status = wifi.get_status();
 
@@ -143,7 +144,7 @@ fn wifi_client(
 
         ping(&ip_settings)?;
     } else {
-        bail!("Unexpected Wifi status: {:?}", status);
+        warn!("Unexpected Wifi status: {:?}", status);
     }
 
     Ok(wifi)
@@ -172,7 +173,8 @@ fn wifi_server(
     info!("Wifi configuration set, about to get status");
 
     wifi.wait_status_with_timeout(Duration::from_secs(20), |status| !status.is_transitional())
-        .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
+        // .map_err(|e| anyhow::anyhow!("Unexpected Wifi status: {:?}", e))?;
+        .unwrap_or_else(|e| warn!("Unexpected Wifi status: {:?}", e));
 
     let status = wifi.get_status();
 
@@ -183,7 +185,7 @@ fn wifi_server(
     {
         info!("Wifi connected");
     } else {
-        bail!("Unexpected Wifi status: {:?}", status);
+        warn!("Unexpected Wifi status: {:?}", status);
     }
 
     Ok(wifi)
