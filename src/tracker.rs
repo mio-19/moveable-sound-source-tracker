@@ -225,7 +225,7 @@ fn send_server_async(data: Arc<ArcSwap<common::ControlData>>) -> anyhow::Result<
         }
 
         // Create a listener.
-        let listener = smol::Async::<TcpListener>::bind(([0, 0, 0, 0], 8081))?;
+        let listener = smol::Async::<TcpListener>::bind(([0, 0, 0, 0], 8080))?;
 
         // Accept clients in a loop.
         loop {
@@ -237,7 +237,7 @@ fn send_server_async(data: Arc<ArcSwap<common::ControlData>>) -> anyhow::Result<
         }
     }
 
-    info!("About to bind a simple echo service to port 8081 using async (smol-rs)!");
+    info!("About to bind the service to port 8080 using async (smol-rs)!");
 
     #[allow(clippy::needless_update)]
     {
@@ -278,7 +278,7 @@ fn main() -> Result<()> {
 
     let control = Arc::new(ArcSwap::from(Arc::new(common::ControlData::empty())));
 
-    send_server(control.clone())?;
+    send_server_async(control.clone())?;
 
     // wifi holder
     thread::spawn(move ||{

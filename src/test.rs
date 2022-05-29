@@ -97,7 +97,7 @@ use epd_waveshare::{epd4in2::*, graphics::VarDisplay, prelude::*};
 
 #[allow(dead_code)]
 #[cfg(not(feature = "qemu"))]
-const SSID: &str = "ESP32-WIFI";
+const SSID: &str = "iCJLU";
 #[allow(dead_code)]
 #[cfg(not(feature = "qemu"))]
 const PASS: &str = "ESP32-WIFI-PASS";

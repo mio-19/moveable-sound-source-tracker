@@ -150,7 +150,7 @@ fn wifi_client(
     Ok(wifi)
 }
 
-const SSID: &str = "ESP32-WIFI";
+const SSID: &str = "iCJLU";
 //const PASS: &str = "ESP32-WIFI-PASS";
 
 fn wifi_server(
